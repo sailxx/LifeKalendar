@@ -88,9 +88,10 @@ class MainActivity : Activity() {
         val times = timeRow(col)
         fun show() {
             one.visibility = if (s.schedule == 0) View.VISIBLE else View.GONE
-            day.visibility = if (s.schedule != 0) View.VISIBLE else View.GONE
-            night.visibility = day.visibility
+            // День и ночь выбираются только для смены по времени; «Система» берёт тему телефона.
             times.visibility = if (s.schedule == 2) View.VISIBLE else View.GONE
+            day.visibility = times.visibility
+            night.visibility = times.visibility
         }
         val mode = group(col, "Смена темы", listOf("Нет", "Система", "По времени"), { s.schedule }) {
             s.schedule = it

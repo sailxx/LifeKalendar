@@ -84,10 +84,11 @@ object Wallpaper {
 
     fun theme(ctx: Context, now: LocalDateTime = LocalDateTime.now()): Int {
         val s = Settings.of(ctx)
-        val t = when {
-            s.schedule == 0 -> s.theme
-            isNight(ctx, s, now) -> s.nightTheme
-            else -> s.dayTheme
+        val t = when (s.schedule) {
+            0 -> s.theme
+            // «Система»: тёмная тема телефона — чёрные обои, светлая — светлые.
+            1 -> if (isNight(ctx, s, now)) 0 else 2
+            else -> if (isNight(ctx, s, now)) s.nightTheme else s.dayTheme
         }
         return t.coerceIn(0, 2)
     }
