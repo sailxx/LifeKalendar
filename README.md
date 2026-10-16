@@ -17,14 +17,3 @@
 <p align="center">
   <img src="assets/steps.svg" width="880" alt="Установи · Настрой · Поставь">
 </p>
-
-<details>
-<summary>Сборка</summary>
-
-```bash
-./gradlew assembleRelease
-```
-
-APK — в `app/build/outputs/apk/release/`. Плашки README: `cd tools/readme && npm install && node build.mjs` (шрифты `golos.ttf` и `jbmono.ttf` в `tools/readme/.font/`), тексты — в `tools/readme/strings.json`.
-
-</details>
