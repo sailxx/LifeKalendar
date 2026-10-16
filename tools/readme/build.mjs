@@ -68,9 +68,10 @@ ${d.s}`;
 function button() {
   const body = () => {
     const w = Math.ceil(62 + k.width(S.download, 16, 600) * 1.08 + 48);
-    return { w, s: `<rect x=".5" y=".5" width="${w - 1}" height="55" rx="28" fill="${P.ink}"/>
+    // Оранжевая: выделяется и на светлой, и на тёмной теме GitHub.
+    return { w, s: `<rect x=".5" y=".5" width="${w - 1}" height="55" rx="28" fill="${P.accent}"/>
 <g transform="translate(26 16)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></g>
-<circle cx="${w - 28}" cy="28" r="3.4" fill="${P.accent}"/>
+<circle cx="${w - 28}" cy="28" r="3.4" fill="#fff"/>
 ${k.text(62, 34, S.download, { size: 16, weight: 600, fill: '#fff' })}` };
   };
   const b = body();
