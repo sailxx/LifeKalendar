@@ -1,0 +1,7 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+*.apk
+node_modules/
+tools/readme/.font/

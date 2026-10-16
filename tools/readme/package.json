@@ -1,0 +1,8 @@
+{
+  "name": "lifekalendar-readme",
+  "private": true,
+  "type": "module",
+  "description": "Генератор плашек README",
+  "scripts": { "build": "node build.mjs" },
+  "devDependencies": { "fontkit": "^2.0.4", "subset-font": "^2.4.0" }
+}
