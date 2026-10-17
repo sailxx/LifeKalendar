@@ -78,10 +78,20 @@ ${k.text(62, 34, S.download, { size: 16, weight: 600, fill: '#fff' })}` };
   return k.svg(Math.ceil(b.w), 56, S.download, b.s);
 }
 
+// Вторая кнопка — веб-версия для компьютера: тёмная, с монитором.
+function desktop() {
+  const w = Math.ceil(62 + k.width(S.desktop, 16, 600) * 1.08 + 48);
+  return k.svg(w, 56, S.desktop, `<rect x=".5" y=".5" width="${w - 1}" height="55" rx="28" fill="#1C1C1E" stroke="#3A3A3E"/>
+<g transform="translate(26 16)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M9 20h6m-3-4v4"/></g>
+<circle cx="${w - 28}" cy="28" r="3.4" fill="${P.accent}"/>
+${k.text(62, 34, S.desktop, { size: 16, weight: 600, fill: '#fff' })}`);
+}
+
 await k.build(path.join(here, '../../assets'), () => ({
   'hero.svg': hero(),
   'features.svg': features(),
   'themes.svg': themes(),
   'steps.svg': steps(),
   'download.svg': button(),
+  'desktop.svg': desktop(),
 }));
