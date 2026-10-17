@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Календарь-обои")]
 [assembly: AssemblyProduct("LifeKalendar")]
-[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
 
 // Настройки: те же поля, что в Settings на Android, плюс мониторы. Хранятся в settings.ini.
 class Settings
@@ -264,7 +264,15 @@ static class Kalendar
     }
 
     // Ставит обои. Без force — только если сменились дата, тема, мониторы или настройки.
+    static readonly object Gate = new object();
+
+    // Окно и таймер могут попросить обои одновременно — ставим по очереди.
     public static void Apply(Settings s, bool force)
+    {
+        lock (Gate) ApplyLocked(s, force);
+    }
+
+    static void ApplyLocked(Settings s, bool force)
     {
         var now = DateTime.Now;
         int theme = ThemeNow(s, now);
@@ -336,122 +344,33 @@ static class Kalendar
         }
     }
 
-    // ---------- Автообновление: фоновый режим, запускается при входе в Windows ----------
+    // ---------- Автообновление: программа в трее, запускается при входе в Windows ----------
 
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     const string RunName = "LifeKalendar";
-    public const string StopEvent = "LifeKalendar.Stop";
-    public static string InstalledExe { get { return Path.Combine(Settings.Dir, "LifeKalendar.exe"); } }
 
-    // Копирует программу в %LOCALAPPDATA%\LifeKalendar, ставит ярлык в «Пуск», автозапуск
-    // и сразу запускает фоновый режим (если он ещё не работает).
+    // Автозапуск этой же программы (там, где она лежит) — сразу в трей, без окна.
     public static void Enable()
     {
-        Directory.CreateDirectory(Settings.Dir);
-        string exe = Application.ExecutablePath;
-        if (!string.Equals(Path.GetFullPath(exe), Path.GetFullPath(InstalledExe), StringComparison.OrdinalIgnoreCase))
-        {
-            try { File.Copy(exe, InstalledExe, true); }
-            catch (IOException) { } // фоновая копия уже работает и держит файл — оставляем её
-        }
-        Shortcut();
         using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
-            k.SetValue(RunName, "\"" + InstalledExe + "\" --background");
-        if (!Background.Running()) Process.Start(InstalledExe, "--background");
+            k.SetValue(RunName, "\"" + Application.ExecutablePath + "\" --tray");
+        CleanupOld();
     }
 
     public static void Disable()
     {
         using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
             k.DeleteValue(RunName, false);
-        // Просим работающий фоновый режим завершиться.
-        EventWaitHandle stop;
-        if (EventWaitHandle.TryOpenExisting(StopEvent, out stop))
-            using (stop) stop.Set();
         TryDelete(AppliedFile);
     }
 
-    // WScript.Shell не сохраняет ярлык с кириллицей в имени — поэтому латиницей.
-    static void Shortcut()
+    // Версия 1.1 копировала себя в %LOCALAPPDATA% и ставила ярлык в «Пуск» — убираем, если это не мы.
+    static void CleanupOld()
     {
-        try
-        {
-            string lnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "LifeKalendar.lnk");
-            Type t = Type.GetTypeFromProgID("WScript.Shell");
-            object sh = Activator.CreateInstance(t);
-            object sc = t.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, sh, new object[] { lnk });
-            Type st = sc.GetType();
-            st.InvokeMember("TargetPath", BindingFlags.SetProperty, null, sc, new object[] { InstalledExe });
-            st.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, sc, new object[] { Settings.Dir });
-            st.InvokeMember("Save", BindingFlags.InvokeMethod, null, sc, null);
-        }
-        catch (Exception e) { Log("Ярлык: " + (e.InnerException ?? e).Message); }
-    }
-}
-
-// Фоновый режим без окна: обои меняются в полночь, при смене темы Windows, мониторов,
-// после сна и разблокировки. Раз в минуту — проверка на всякий случай (расписание «По времени»).
-class Background : ApplicationContext
-{
-    const string MutexName = "LifeKalendar.Background";
-    readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
-    readonly Control sync = new Control();
-
-    public static bool Running()
-    {
-        bool created;
-        using (new Mutex(false, MutexName, out created)) return !created;
-    }
-
-    public static void Run()
-    {
-        bool first;
-        using (new Mutex(true, MutexName, out first))
-            if (first) Application.Run(new Background());
-    }
-
-    Background()
-    {
-        sync.CreateControl();
-        timer.Interval = 60 * 1000;
-        timer.Tick += delegate { Update(); };
-        timer.Start();
-        SystemEvents.UserPreferenceChanged += Soon;
-        SystemEvents.DisplaySettingsChanged += Soon;
-        SystemEvents.TimeChanged += Soon;
-        SystemEvents.PowerModeChanged += Soon;
-        SystemEvents.SessionSwitch += Soon;
-        var stop = new EventWaitHandle(false, EventResetMode.AutoReset, Kalendar.StopEvent);
-        ThreadPool.RegisterWaitForSingleObject(stop, delegate { sync.BeginInvoke((Action)ExitThread); }, null, -1, true);
-        Update();
-    }
-
-    // События приходят пачкой (смена темы — несколько UserPreferenceChanged): ждём 2 секунды и проверяем один раз.
-    void Soon(object o, EventArgs e)
-    {
-        sync.BeginInvoke((Action)delegate { timer.Stop(); timer.Interval = 2000; timer.Start(); });
-    }
-
-    void Update()
-    {
-        timer.Interval = 60 * 1000;
-        try
-        {
-            var s = Settings.Load();
-            if (s.Enabled == 1) Kalendar.Apply(s, false);
-        }
-        catch (Exception e) { Kalendar.Log(e.ToString()); }
-    }
-
-    protected override void ExitThreadCore()
-    {
-        SystemEvents.UserPreferenceChanged -= Soon;
-        SystemEvents.DisplaySettingsChanged -= Soon;
-        SystemEvents.TimeChanged -= Soon;
-        SystemEvents.PowerModeChanged -= Soon;
-        SystemEvents.SessionSwitch -= Soon;
-        timer.Stop();
-        base.ExitThreadCore();
+        TryDelete(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "LifeKalendar.lnk"));
+        string old = Path.Combine(Settings.Dir, "LifeKalendar.exe");
+        if (!string.Equals(Path.GetFullPath(Application.ExecutablePath), Path.GetFullPath(old), StringComparison.OrdinalIgnoreCase))
+            TryDelete(old);
     }
 }
 
@@ -687,7 +606,10 @@ class MainForm : Form
     readonly Btn apply, stop, save, folder;
     readonly List<Control[]> rows = new List<Control[]>();   // подпись + элементы группы, сверху вниз
     readonly Dictionary<Control[], Func<bool>> shown = new Dictionary<Control[], Func<bool>>();
-    readonly System.Windows.Forms.Timer midnight = new System.Windows.Forms.Timer();
+    readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+    readonly NotifyIcon tray = new NotifyIcon();
+    bool hidden, exiting, hinted;
+    string lastError;
     int busy;
 
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int a, ref int v, int size);
@@ -695,8 +617,10 @@ class MainForm : Form
 
     static readonly string[] Themes = { "Чёрная", "Красная", "Светлая" };
 
-    public MainForm()
+    // hidden: запуск из автозагрузки — сразу в трей, без окна.
+    public MainForm(bool hidden)
     {
+        this.hidden = hidden;
         k = GetDpiForSystem() / 96f;
         Text = "Календарь-обои";
         BackColor = Ui.Bg;
@@ -748,13 +672,92 @@ class MainForm : Form
         Group("Мониторы", new[] { "Все", "Только главный" }, () => s.Monitors, v => s.Monitors = v, () => Screen.AllScreens.Length > 1);
         Relayout();
 
-        // «Система»: тема Windows поменялась — сразу обновляем превью и обои. Мониторы — тоже.
-        SystemEvents.UserPreferenceChanged += OnSystemChanged;
-        SystemEvents.DisplaySettingsChanged += OnSystemChanged;
-        midnight.Interval = 60 * 1000;
-        midnight.Tick += delegate { if (s.Enabled == 1) Run(delegate { Kalendar.Apply(s, false); }, null); else Refresh_(); };
-        midnight.Start();
+        // Обои обновляются, пока программа работает (в трее): в полночь, при смене темы Windows,
+        // мониторов, после сна и разблокировки. Раз в минуту — проверка на всякий случай.
+        SystemEvents.UserPreferenceChanged += Soon;
+        SystemEvents.DisplaySettingsChanged += Soon;
+        SystemEvents.TimeChanged += Soon;
+        SystemEvents.PowerModeChanged += Soon;
+        SystemEvents.SessionSwitch += Soon;
+        timer.Interval = 60 * 1000;
+        timer.Tick += delegate { Tick(); };
+        timer.Start();
+
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Открыть", null, delegate { ShowWindow(); });
+        menu.Items.Add("Обновить обои сейчас", null, delegate { Run(delegate { Kalendar.Apply(s, true); }, null); });
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Выход", null, delegate { Exit(); });
+        menu.Items[0].Font = new Font(menu.Font, FontStyle.Bold);
+        tray.ContextMenuStrip = menu;
+        tray.Icon = Icon;
+        tray.Text = "Календарь-обои";
+        tray.MouseClick += delegate(object o, MouseEventArgs e) { if (e.Button == MouseButtons.Left) ShowWindow(); };
+        tray.Visible = true;
+
         Refresh_();
+        if (s.Enabled == 1) Run(delegate { Kalendar.Apply(s, false); }, null);
+    }
+
+    // Первый показ при запуске из автозагрузки пропускаем: окно создаётся, но остаётся скрытым.
+    protected override void SetVisibleCore(bool value)
+    {
+        if (hidden)
+        {
+            hidden = false;
+            if (!IsHandleCreated) CreateHandle();
+            value = false;
+        }
+        base.SetVisibleCore(value);
+    }
+
+    public void ShowWindow()
+    {
+        Show();
+        if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+        Relayout();
+        Refresh_();
+        Activate();
+    }
+
+    // Крестик прячет окно в трей; закрыть совсем — «Выход» в меню значка.
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        // Крестик, «Закрыть окно» на панели задач, Alt+F4 — всё в трей; выключение Windows — выходим.
+        if (!exiting && e.CloseReason != CloseReason.WindowsShutDown && e.CloseReason != CloseReason.TaskManagerClosing)
+        {
+            e.Cancel = true;
+            Hide();
+            if (!hinted)
+            {
+                hinted = true;
+                tray.ShowBalloonTip(3000, "Календарь-обои работает в трее", "Обои обновляются, пока программа запущена. Закрыть совсем — «Выход» в меню значка.", ToolTipIcon.None);
+            }
+            return;
+        }
+        base.OnFormClosing(e);
+    }
+
+    void Exit()
+    {
+        exiting = true;
+        tray.Visible = false;
+        Close();
+        Application.Exit();
+    }
+
+    // События приходят пачкой (смена темы — несколько UserPreferenceChanged): ждём 2 секунды и проверяем один раз.
+    void Soon(object o, EventArgs e)
+    {
+        BeginInvoke((Action)delegate { timer.Stop(); timer.Interval = 2000; timer.Start(); });
+    }
+
+    void Tick()
+    {
+        timer.Interval = 60 * 1000;
+        if (Visible) Relayout();
+        if (s.Enabled == 1) Run(delegate { Kalendar.Apply(s, false); }, null);
+        else if (Visible) Refresh_();
     }
 
     int P(int v) { return (int)Math.Round(v * k); }
@@ -770,14 +773,13 @@ class MainForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
-        SystemEvents.UserPreferenceChanged -= OnSystemChanged;
-        SystemEvents.DisplaySettingsChanged -= OnSystemChanged;
+        SystemEvents.UserPreferenceChanged -= Soon;
+        SystemEvents.DisplaySettingsChanged -= Soon;
+        SystemEvents.TimeChanged -= Soon;
+        SystemEvents.PowerModeChanged -= Soon;
+        SystemEvents.SessionSwitch -= Soon;
+        tray.Dispose();
         base.OnFormClosed(e);
-    }
-
-    void OnSystemChanged(object o, EventArgs e)
-    {
-        BeginInvoke((Action)delegate { Relayout(); Changed(); });
     }
 
     Label Caption(string t)
@@ -864,8 +866,11 @@ class MainForm : Form
             {
                 Interlocked.Decrement(ref busy);
                 Refresh_();
-                if (err != null) MessageBox.Show(this, "Не удалось поставить обои.\n\n" + err, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                else if (done != null) status.Text = done + "\n" + status.Text;
+                // Окно скрыто — не всплываем окном каждую минуту, а один раз говорим значком в трее.
+                if (err != null && Visible) MessageBox.Show(this, "Не удалось поставить обои.\n\n" + err, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                else if (err != null && err != lastError) tray.ShowBalloonTip(5000, "Не удалось поставить обои", err, ToolTipIcon.Warning);
+                else if (err == null && done != null) status.Text = done + "\n" + status.Text;
+                lastError = err;
             });
         });
     }
@@ -883,11 +888,13 @@ class MainForm : Form
         preview.Invalidate();
 
         bool on = s.Enabled == 1;
-        string line = busy > 0 ? "Ставлю обои…" : on ? "Автообновление включено" : "Автообновление выключено — нажми «Поставить обои»";
+        string line = busy > 0 ? "Ставлю обои…" : on ? "Автообновление включено: программа в трее и запускается с Windows" : "Автообновление выключено — нажми «Поставить обои»";
         status.Text = line + "\nСейчас на обоях: " + Kalendar.ThemeNames[theme] +
             (s.Schedule == 1 ? " · тема Windows: " + (Kalendar.WindowsDark() ? "тёмная" : "светлая") : "") +
             " · " + all.Width + "×" + all.Height;
         stop.Visible = on;
+        int len = DateTime.IsLeapYear(now.Year) ? 366 : 365;
+        tray.Text = "Календарь-обои · осталось " + (len - now.DayOfYear) + " дн.";
         // Без кнопки «Выключить» нижний ряд поднимается на её место.
         int y = on ? P(598) : P(544);
         save.Top = y;
@@ -911,7 +918,7 @@ static class Program
     [STAThread]
     static int Main(string[] args)
     {
-        // --background: фоновый режим (автозагрузка); --update: один раз проверить и обновить; --render файл.png [ширина высота]: только картинка.
+        // --tray: запуск из автозагрузки сразу в трей; --update: один раз проверить и обновить; --render файл.png [ширина высота]: только картинка.
         if (args.Length > 0 && args[0] == "--update")
         {
             try
@@ -925,11 +932,6 @@ static class Program
                 Kalendar.Log(e.ToString());
                 return 1;
             }
-        }
-        if (args.Length > 0 && args[0] == "--background")
-        {
-            Background.Run();
-            return 0;
         }
         // --install / --uninstall: включить или выключить автообновление без окна (для своих скриптов).
         if (args.Length > 0 && (args[0] == "--install" || args[0] == "--uninstall"))
@@ -967,13 +969,25 @@ static class Program
             return 0;
         }
 
+        // Уже запущена — просим её показать окно.
         bool first;
-        using (new Mutex(true, "LifeKalendar.Window", out first))
+        using (var show = new EventWaitHandle(false, EventResetMode.AutoReset, "LifeKalendar.Show", out first))
         {
-            if (!first) return 0;
+            if (!first)
+            {
+                if (args.Length == 0 || args[0] != "--tray") show.Set();
+                return 0;
+            }
+            // Фоновый режим версии 1.1 больше не нужен — трей делает то же самое.
+            EventWaitHandle old;
+            if (EventWaitHandle.TryOpenExisting("LifeKalendar.Stop", out old))
+                using (old) old.Set();
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            var form = new MainForm(args.Length > 0 && args[0] == "--tray");
+            ThreadPool.RegisterWaitForSingleObject(show, delegate { form.BeginInvoke((Action)form.ShowWindow); }, null, -1, false);
+            Application.Run(form);
         }
         return 0;
     }
