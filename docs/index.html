@@ -43,6 +43,9 @@
   .copy { height: 40px; border: 0; border-radius: 20px; background: var(--chip); color: var(--ink); padding: 0 18px;
           font: 500 14px 'Golos Text', sans-serif; cursor: pointer; }
   a { color: var(--accent); }
+  .dl { display: flex; align-items: center; justify-content: center; text-decoration: none; max-width: 360px; margin-top: 16px; }
+  details { margin-top: 20px; }
+  summary { cursor: pointer; color: var(--dim); }
 </style>
 </head>
 <body>
@@ -70,13 +73,19 @@
   </div>
 
   <section>
-    <h2>Windows: обновлять каждый день</h2>
-    <p class="lead">Открой PowerShell и вставь команду. Скрипт рисует обои под главный монитор и раз в 10 минут проверяет дату, тему Windows и разрешение. Без прав администратора, без сети после установки.</p>
-    <pre id="cmd"></pre>
-    <button class="copy" data-copy="cmd">Скопировать</button>
-    <p class="note">Выключить автообновление:</p>
-    <pre id="off"></pre>
-    <button class="copy" data-copy="off">Скопировать</button>
+    <h2>Windows: программа</h2>
+    <p class="lead">Всё как на телефоне: темы, смена вместе с Windows или по времени, размер, место, рабочий стол и экран блокировки, все мониторы сразу. Нажми «Поставить обои» — дальше обновляется само, без окна и без прав администратора.</p>
+    <a class="btn dl" href="https://github.com/sailxx/LifeKalendar/releases/latest/download/LifeKalendar.exe">Скачать LifeKalendar.exe</a>
+    <p class="note">Windows 10 и 11. Если SmartScreen предупредит — «Подробнее» → «Выполнить в любом случае».</p>
+    <details>
+      <summary>Без программы — скрипт PowerShell</summary>
+      <p class="note">Только рабочий стол. Вставь команду в PowerShell:</p>
+      <pre id="cmd"></pre>
+      <button class="copy" data-copy="cmd">Скопировать</button>
+      <p class="note">Выключить:</p>
+      <pre id="off"></pre>
+      <button class="copy" data-copy="off">Скопировать</button>
+    </details>
     <p class="note">macOS и Linux: скачай PNG и поставь его обоями. Для телефона — <a href="https://github.com/sailxx/LifeKalendar">приложение для Android</a>.</p>
   </section>
 </main>

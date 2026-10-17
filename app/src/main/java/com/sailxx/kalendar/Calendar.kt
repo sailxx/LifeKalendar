@@ -2,6 +2,7 @@ package com.sailxx.kalendar
 
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.app.UiModeManager
 import android.app.WallpaperManager
 import android.app.job.JobInfo
 import android.app.job.JobParameters
@@ -17,6 +18,8 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.content.res.Configuration
+import android.content.res.Resources
+import android.os.Build
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -42,6 +45,12 @@ class Settings(private val p: SharedPreferences) {
     var applied: String
         get() = p.getString("applied", "") ?: ""
         set(v) = p.edit().putString("applied", v).apply()
+
+    // Когда обои ставились последний раз (миллисекунды) — видно в приложении, сработало ли автообновление.
+    var lastRun: Long
+        get() = p.getLong("lastRun", 0)
+        set(v) = p.edit().putLong("lastRun", v).apply()
+    var askedBattery by Pref(p, "askedBattery", 0)
 
     companion object {
         fun of(ctx: Context) = Settings(ctx.getSharedPreferences("kalendar", Context.MODE_PRIVATE))
@@ -72,14 +81,35 @@ object Wallpaper {
         return minOf(m.widthPixels, m.heightPixels) to maxOf(m.widthPixels, m.heightPixels)
     }
 
+    private fun inNight(t: Int, dayAt: Int, nightAt: Int) =
+        if (dayAt <= nightAt) t !in dayAt until nightAt else t in nightAt until dayAt
+
     private fun isNight(ctx: Context, s: Settings, now: LocalDateTime): Boolean = when (s.schedule) {
-        1 -> ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-        2 -> {
-            val t = now.hour * 60 + now.minute
-            if (s.dayAt <= s.nightAt) t !in s.dayAt until s.nightAt
-            else t in s.nightAt until s.dayAt
-        }
+        1 -> systemNight(ctx, now)
+        2 -> inNight(now.hour * 60 + now.minute, s.dayAt, s.nightAt)
         else -> false
+    }
+
+    // Тёмная тема телефона. Включена или выключена вручную — так и есть; «по расписанию» — считаем по его времени,
+    // а не по конфигурации процесса: фоновый процесс мог проспать смену темы и держать старую.
+    fun systemNight(ctx: Context, now: LocalDateTime = LocalDateTime.now()): Boolean {
+        val ui = ctx.getSystemService(UiModeManager::class.java)
+        val custom = customNight(ui)
+        return when {
+            ui.nightMode == UiModeManager.MODE_NIGHT_YES -> true
+            ui.nightMode == UiModeManager.MODE_NIGHT_NO -> false
+            custom != null -> inNight(now.hour * 60 + now.minute, custom.second, custom.first)
+            else -> Resources.getSystem().configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        }
+    }
+
+    // Своё расписание тёмной темы (Android 11+): начало и конец в минутах от полуночи.
+    private fun customNight(ui: UiModeManager): Pair<Int, Int>? {
+        if (Build.VERSION.SDK_INT < 30 || ui.nightMode != UiModeManager.MODE_NIGHT_CUSTOM) return null
+        val a = ui.customNightModeStart
+        val b = ui.customNightModeEnd
+        if (a == b) return null
+        return (a.hour * 60 + a.minute) to (b.hour * 60 + b.minute)
     }
 
     fun theme(ctx: Context, now: LocalDateTime = LocalDateTime.now()): Int {
@@ -179,6 +209,7 @@ object Wallpaper {
         WallpaperManager.getInstance(ctx).setBitmap(bmp, null, true, flags)
         bmp.recycle()
         s.applied = key
+        s.lastRun = System.currentTimeMillis()
     }
 
     private fun alarm(ctx: Context) = PendingIntent.getBroadcast(
@@ -186,30 +217,64 @@ object Wallpaper {
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
-    // Ближайший будильник: полночь, смена темы по времени или проверка темы системы раз в 5 минут.
-    // После срабатывания ставится снова.
+    // Ближайший будильник: полночь, смена темы по времени (своей или системной) или проверка темы
+    // раз в 10 минут, если система меняет её по закату и рассвету. После срабатывания ставится снова.
+    // Точный будильник: неточный в режиме сна Android откладывает на часы — из-за этого обои не менялись в полночь.
     fun schedule(ctx: Context) {
         val s = Settings.of(ctx)
         val zone = ZoneId.systemDefault()
         val now = LocalDateTime.now(zone)
         val times = mutableListOf(now.toLocalDate().plusDays(1).atStartOfDay())
+        fun at(m: Int) {
+            var t = now.toLocalDate().atStartOfDay().plusMinutes(m.toLong())
+            if (!t.isAfter(now)) t = t.plusDays(1)
+            times += t
+        }
         when (s.schedule) {
-            1 -> times += now.plusMinutes(5)
-            2 -> for (m in listOf(s.dayAt, s.nightAt)) {
-                var t = now.toLocalDate().atStartOfDay().plusMinutes(m.toLong())
-                if (!t.isAfter(now)) t = t.plusDays(1)
-                times += t
+            1 -> {
+                val ui = ctx.getSystemService(UiModeManager::class.java)
+                val custom = customNight(ui)
+                if (custom != null) {
+                    at(custom.first)
+                    at(custom.second)
+                } else if (ui.nightMode != UiModeManager.MODE_NIGHT_YES && ui.nightMode != UiModeManager.MODE_NIGHT_NO) {
+                    times += now.plusMinutes(10)
+                }
+            }
+            2 -> {
+                at(s.dayAt)
+                at(s.nightAt)
             }
         }
         val at = times.min().atZone(zone).toInstant().toEpochMilli() + 5_000
-        ctx.getSystemService(AlarmManager::class.java)
-            .setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, alarm(ctx))
+        val am = ctx.getSystemService(AlarmManager::class.java)
+        if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) {
+            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, alarm(ctx))
+        } else {
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, alarm(ctx))
+        }
         watchTheme(ctx)
+        backup(ctx)
     }
 
     fun cancel(ctx: Context) {
         ctx.getSystemService(AlarmManager::class.java).cancel(alarm(ctx))
-        ctx.getSystemService(JobScheduler::class.java).cancel(THEME_JOB)
+        val js = ctx.getSystemService(JobScheduler::class.java)
+        js.cancel(THEME_JOB)
+        js.cancel(BACKUP_JOB)
+    }
+
+    // Запасной путь, если будильник всё же не пришёл (оболочки телефонов иногда их режут):
+    // задача раз в 15 минут проверяет дату и тему. Переживает перезагрузку.
+    private fun backup(ctx: Context) {
+        val js = ctx.getSystemService(JobScheduler::class.java)
+        if (js.getPendingJob(BACKUP_JOB) != null) return
+        js.schedule(
+            JobInfo.Builder(BACKUP_JOB, ComponentName(ctx, ThemeJob::class.java))
+                .setPeriodic(15 * 60 * 1000L)
+                .setPersisted(true)
+                .build(),
+        )
     }
 
     // Режим «Система»: задача срабатывает сразу, как только в системе переключают тёмную тему.
@@ -231,6 +296,7 @@ object Wallpaper {
     }
 
     private const val THEME_JOB = 1
+    private const val BACKUP_JOB = 2
 }
 
 class ThemeJob : JobService() {

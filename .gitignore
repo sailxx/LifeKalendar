@@ -5,3 +5,5 @@ local.properties
 *.apk
 node_modules/
 tools/readme/.font/
+
+windows/LifeKalendar.exe

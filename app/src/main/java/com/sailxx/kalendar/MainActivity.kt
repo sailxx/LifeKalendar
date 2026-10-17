@@ -2,7 +2,10 @@ package com.sailxx.kalendar
 
 import android.app.Activity
 import android.app.TimePickerDialog
-import android.content.res.Configuration
+import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings as AndroidSettings
 import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.Typeface
@@ -19,6 +22,9 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 class MainActivity : Activity() {
     private lateinit var s: Settings
@@ -144,6 +150,7 @@ class MainActivity : Activity() {
                     s.enabled = 1
                     Wallpaper.schedule(this)
                     if (toast) Toast.makeText(this, "Готово", Toast.LENGTH_SHORT).show()
+                    askBattery()
                 } else {
                     Toast.makeText(this, "Не удалось поставить обои", Toast.LENGTH_LONG).show()
                 }
@@ -157,10 +164,33 @@ class MainActivity : Activity() {
         preview.setImageBitmap(Wallpaper.render(this, w / 3, h / 3))
         val on = s.enabled == 1
         val now = listOf("чёрная", "красная", "светлая")[Wallpaper.theme(this)]
-        val sys = if (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES) "тёмная" else "светлая"
+        val sys = if (Wallpaper.systemNight(this)) "тёмная" else "светлая"
         status.text = (if (on) "Автообновление включено" else "Автообновление выключено — нажми «Поставить обои»") +
-            "\nСейчас на обоях: $now" + (if (s.schedule == 1) " · тема системы: $sys" else "")
+            "\nСейчас на обоях: $now" + (if (s.schedule == 1) " · тема системы: $sys" else "") + lastRun() +
+            (if (on && !batteryFree()) "\nДля надёжного обновления сними ограничение батареи для приложения" else "")
         stop.visibility = if (on) View.VISIBLE else View.GONE
+    }
+
+    private fun lastRun(): String {
+        if (s.lastRun == 0L) return ""
+        val t = Instant.ofEpochMilli(s.lastRun).atZone(ZoneId.systemDefault())
+        val day = when (t.toLocalDate()) {
+            LocalDate.now() -> "сегодня"
+            LocalDate.now().minusDays(1) -> "вчера"
+            else -> "%02d.%02d".format(t.dayOfMonth, t.monthValue)
+        }
+        return "\nОбновлено: $day в %02d:%02d".format(t.hour, t.minute)
+    }
+
+    private fun batteryFree() = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+
+    // Без ограничений батареи Android не откладывает обновление в полночь. Спрашиваем один раз после «Поставить обои».
+    private fun askBattery() {
+        if (batteryFree() || s.askedBattery == 1) return
+        s.askedBattery = 1
+        runCatching {
+            startActivity(Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+        }
     }
 
     private fun caption(box: LinearLayout, title: String) = box.addView(TextView(this).apply {
