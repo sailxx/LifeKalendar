@@ -1,4 +1,4 @@
-// Календарь-обои для Windows: год точками на рабочем столе и экране блокировки.
+﻿// Календарь-обои для Windows: год точками на рабочем столе и экране блокировки.
 // Те же темы и настройки, что в приложении для Android. Сборка: build.cmd (C# 5, без зависимостей).
 using System;
 using System.Collections.Generic;
@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Календарь-обои")]
 [assembly: AssemblyProduct("LifeKalendar")]
-[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyVersion("1.3.0.0")]
 
 // Настройки: те же поля, что в Settings на Android, плюс мониторы. Хранятся в settings.ini.
 class Settings
@@ -575,6 +575,125 @@ class TimeBox : Control
     protected override void OnMouseClick(MouseEventArgs e) { box.Focus(); box.SelectAll(); }
 }
 
+// Меню значка в трее в стиле приложения: тёмное, со скруглёнными пунктами и шапкой с логотипом.
+class TrayMenu : ContextMenuStrip
+{
+    public static readonly Color Bg = Color.FromArgb(0x1C, 0x1C, 0x1E);
+    public static readonly Color Hover = Color.FromArgb(0x2C, 0x2C, 0x30);
+    public static readonly Color Line = Color.FromArgb(0x2E, 0x2E, 0x32);
+    public readonly TrayHeader Header = new TrayHeader();
+
+    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int a, ref int v, int size);
+
+    public TrayMenu()
+    {
+        Renderer = new Look();
+        BackColor = Bg;
+        ForeColor = Color.White;
+        Font = new Font("Segoe UI", 10f);
+        ShowImageMargin = false;
+        ShowCheckMargin = false;
+        DropShadowEnabled = true;
+        Padding = new Padding(6);
+        Items.Add(Header);
+        Items.Add(new ToolStripSeparator());
+    }
+
+    public ToolStripMenuItem Add(string text, Action click)
+    {
+        var it = new ToolStripMenuItem(text) { Padding = new Padding(4, 7, 4, 7), ForeColor = Color.White };
+        it.Click += delegate { click(); };
+        Items.Add(it);
+        return it;
+    }
+
+    // Скруглённые углы окна меню, как у системных меню Windows 11.
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        int round = 2;
+        DwmSetWindowAttribute(Handle, 33, ref round, 4);
+    }
+
+    class Look : ToolStripRenderer
+    {
+        protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+        {
+            using (var b = new SolidBrush(Bg)) e.Graphics.FillRectangle(b, e.AffectedBounds);
+        }
+
+        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+        {
+            var r = e.ToolStrip.ClientRectangle;
+            using (var p = new Pen(Line)) e.Graphics.DrawRectangle(p, 0, 0, r.Width - 1, r.Height - 1);
+        }
+
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            if (!e.Item.Selected || !e.Item.Enabled) return;
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            var r = new RectangleF(2, 1, e.Item.Width - 4, e.Item.Height - 2);
+            using (var p = Ui.Round(r, 6 * e.Item.Owner.DeviceDpi / 96f))
+            using (var b = new SolidBrush(Hover))
+                g.FillPath(b, p);
+        }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = e.Item.Enabled ? e.Item.ForeColor : Ui.Dim;
+            e.TextFormat |= TextFormatFlags.Left;
+            var r = e.TextRectangle;
+            e.TextRectangle = new Rectangle(r.X + 6, r.Y, r.Width, r.Height);
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+        {
+            int y = e.Item.Height / 2;
+            using (var p = new Pen(Line)) e.Graphics.DrawLine(p, 8, y, e.Item.Width - 8, y);
+        }
+    }
+}
+
+// Шапка меню: логотип, название и сколько осталось до конца года. Нажатие открывает окно.
+class TrayHeader : ToolStripMenuItem
+{
+    public string Line2 = "";
+
+    [DllImport("user32.dll")] static extern uint GetDpiForSystem();
+
+    public TrayHeader()
+    {
+        AutoSize = false;
+        float k = GetDpiForSystem() / 96f;
+        Size = new Size((int)(240 * k), (int)(52 * k));
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        float k = Owner == null ? 1 : Owner.DeviceDpi / 96f;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+        if (Selected)
+            using (var p = Ui.Round(new RectangleF(2, 1, Width - 4, Height - 2), 6 * k))
+            using (var b = new SolidBrush(TrayMenu.Hover))
+                g.FillPath(b, p);
+        int icon = (int)(28 * k);
+        using (var logo = Ui.Logo(icon)) g.DrawImage(logo, 10 * k, (Height - icon) / 2f);
+        using (var f1 = new Font("Segoe UI Semibold", 10f))
+        using (var f2 = new Font("Segoe UI", 8.5f))
+        using (var white = new SolidBrush(Color.White))
+        using (var orange = new SolidBrush(Ui.Accent))
+        {
+            float x = 10 * k + icon + 10 * k;
+            g.DrawString("Календарь-обои", f1, white, x, Height / 2f - f1.GetHeight(g) + 2 * k);
+            g.DrawString(Line2, f2, orange, x, Height / 2f + 1 * k);
+        }
+    }
+}
+
 class Preview : Control
 {
     public Bitmap Image;
@@ -608,6 +727,7 @@ class MainForm : Form
     readonly Dictionary<Control[], Func<bool>> shown = new Dictionary<Control[], Func<bool>>();
     readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
     readonly NotifyIcon tray = new NotifyIcon();
+    readonly TrayMenu menu = new TrayMenu();
     bool hidden, exiting, hinted;
     string lastError;
     int busy;
@@ -683,12 +803,11 @@ class MainForm : Form
         timer.Tick += delegate { Tick(); };
         timer.Start();
 
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("Открыть", null, delegate { ShowWindow(); });
-        menu.Items.Add("Обновить обои сейчас", null, delegate { Run(delegate { Kalendar.Apply(s, true); }, null); });
+        menu.Header.Click += delegate { ShowWindow(); };
+        menu.Add("Открыть окно", ShowWindow);
+        menu.Add("Обновить обои сейчас", delegate { Run(delegate { Kalendar.Apply(s, true); }, null); });
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Выход", null, delegate { Exit(); });
-        menu.Items[0].Font = new Font(menu.Font, FontStyle.Bold);
+        menu.Add("Выход", Exit).ForeColor = Ui.Dim;
         tray.ContextMenuStrip = menu;
         tray.Icon = Icon;
         tray.Text = "Календарь-обои";
@@ -895,6 +1014,7 @@ class MainForm : Form
         stop.Visible = on;
         int len = DateTime.IsLeapYear(now.Year) ? 366 : 365;
         tray.Text = "Календарь-обои · осталось " + (len - now.DayOfYear) + " дн.";
+        menu.Header.Line2 = "осталось " + (len - now.DayOfYear) + " дн. · " + (now.DayOfYear * 100 / len) + "% года";
         // Без кнопки «Выключить» нижний ряд поднимается на её место.
         int y = on ? P(598) : P(544);
         save.Top = y;
