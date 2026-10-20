@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Календарь-обои")]
 [assembly: AssemblyProduct("LifeKalendar")]
-[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
 
 // Настройки: те же поля, что в Settings на Android, плюс мониторы. Хранятся в settings.ini.
 class Settings
