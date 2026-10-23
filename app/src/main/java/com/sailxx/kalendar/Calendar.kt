@@ -123,7 +123,18 @@ object Wallpaper {
         return t.coerceIn(0, 2)
     }
 
+    // Рисуем в 2x и даунскейлим с фильтрацией — штатный AA Skia мылит тонкие точки,
+    // супersampling даёт заметно более чёткий край на любом экране.
+    private const val SS = 2
+
     fun render(ctx: Context, w: Int, h: Int, date: LocalDate = LocalDate.now()): Bitmap {
+        val big = renderAt(ctx, w * SS, h * SS, date)
+        val bmp = Bitmap.createScaledBitmap(big, w, h, true)
+        big.recycle()
+        return bmp
+    }
+
+    private fun renderAt(ctx: Context, w: Int, h: Int, date: LocalDate): Bitmap {
         val s = Settings.of(ctx)
         val pal = palettes[theme(ctx)]
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)

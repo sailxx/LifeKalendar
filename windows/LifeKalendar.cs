@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Календарь-обои")]
 [assembly: AssemblyProduct("LifeKalendar")]
-[assembly: AssemblyVersion("1.4.0.0")]
+[assembly: AssemblyVersion("1.4.1.0")]
 
 // Настройки: те же поля, что в Settings на Android, плюс мониторы. Хранятся в settings.ini.
 class Settings
@@ -155,26 +155,48 @@ static class Kalendar
         return list.ToArray();
     }
 
+    // Рисуем в 2x и даунскейлим бикубикой — штатный AA GDI+ мылит тонкие точки,
+    // супersampling даёт заметно более чёткий край на любом DPI.
+    const int SS = 2;
+
+    static Bitmap Downscale(Bitmap big, int w, int h)
+    {
+        var out_ = new Bitmap(w, h, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(out_))
+        {
+            g.CompositingQuality = CompositingQuality.HighQuality;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.DrawImage(big, new Rectangle(0, 0, w, h));
+        }
+        big.Dispose();
+        return out_;
+    }
+
     // Картинка на все выбранные мониторы: на каждом — своя сетка под его размер.
     public static Bitmap Compose(Settings s, int theme, DateTime date, float scale)
     {
         Rectangle all;
         var screens = Screens(s, out all);
-        var bmp = new Bitmap(Math.Max(1, (int)Math.Round(all.Width * scale)), Math.Max(1, (int)Math.Round(all.Height * scale)));
+        int w = Math.Max(1, (int)Math.Round(all.Width * scale));
+        int h = Math.Max(1, (int)Math.Round(all.Height * scale));
+        float ss = scale * SS;
+        var bmp = new Bitmap(w * SS, h * SS);
         using (var g = Graphics.FromImage(bmp))
         {
             g.Clear(Pals[theme].Bg);
             foreach (var r in screens)
-                Draw(g, new RectangleF((r.X - all.X) * scale, (r.Y - all.Y) * scale, r.Width * scale, r.Height * scale), s, theme, date);
+                Draw(g, new RectangleF((r.X - all.X) * ss, (r.Y - all.Y) * ss, r.Width * ss, r.Height * ss), s, theme, date);
         }
-        return bmp;
+        return Downscale(bmp, w, h);
     }
 
     public static Bitmap Render(Settings s, int theme, DateTime date, int w, int h)
     {
-        var bmp = new Bitmap(w, h);
-        using (var g = Graphics.FromImage(bmp)) Draw(g, new RectangleF(0, 0, w, h), s, theme, date);
-        return bmp;
+        var bmp = new Bitmap(w * SS, h * SS);
+        using (var g = Graphics.FromImage(bmp)) Draw(g, new RectangleF(0, 0, w * SS, h * SS), s, theme, date);
+        return Downscale(bmp, w, h);
     }
 
     // Сетка: широкий монитор — 4×3 месяца, ультраширокий — 6×2, вертикальный — 3×4. Размеры в шагах точки p.
