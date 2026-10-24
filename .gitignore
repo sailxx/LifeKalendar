@@ -7,3 +7,6 @@ node_modules/
 tools/readme/.font/
 
 windows/LifeKalendar.exe
+
+# Ключ подписи
+keystore.properties
