@@ -1,19 +1,19 @@
 {
   "label": "LIFE KALENDAR",
-  "title": ["Год точками", "на экране телефона"],
-  "lead": "Обои, которые каждый день сами закрашивают ещё один день года. Без сети, без рекламы, без лишнего.",
+  "title": ["The year in dots", "on your phone screen"],
+  "lead": "A wallpaper that fills in one more day of the year on its own, every day. No network, no ads, nothing extra.",
   "features": [
-    { "t": "Обновляются сами", "d": "Каждую полночь на обоях появляется новый день.", "dots": [1, 1, 1, 1, 1, 2, 0, 0, 0] },
-    { "t": "Тема как у телефона", "d": "Светлая днём и тёмная ночью — вместе с системой или по своему времени.", "dots": [1, 1, 1, 1, 2, 0, 0, 0, 0] },
-    { "t": "Свой вид", "d": "Три темы, три размера, сетка под часами, по центру или внизу.", "dots": [1, 0, 1, 0, 2, 0, 1, 0, 1] },
-    { "t": "Ничего лишнего", "d": "Без интернета и аккаунтов. Приложение ничего не отправляет.", "dots": [0, 0, 0, 0, 2, 0, 0, 0, 0] }
+    { "t": "Updates itself", "d": "A new day appears on the wallpaper every midnight.", "dots": [1, 1, 1, 1, 1, 2, 0, 0, 0] },
+    { "t": "Matches your phone", "d": "Light by day and dark by night: follows the system or your own schedule.", "dots": [1, 1, 1, 1, 2, 0, 0, 0, 0] },
+    { "t": "Your own look", "d": "Three themes, three sizes, the grid below the clock, centered or at the bottom.", "dots": [1, 0, 1, 0, 2, 0, 1, 0, 1] },
+    { "t": "Nothing extra", "d": "No internet, no accounts. The app sends nothing anywhere.", "dots": [0, 0, 0, 0, 2, 0, 0, 0, 0] }
   ],
-  "themes": ["ЧЁРНАЯ", "КРАСНАЯ", "СВЕТЛАЯ"],
+  "themes": ["BLACK", "RED", "LIGHT"],
   "steps": [
-    { "t": "Установи", "d": "Скачай APK и открой его на телефоне." },
-    { "t": "Настрой", "d": "Выбери тему, размер и место на экране." },
-    { "t": "Поставь", "d": "Нажми «Поставить обои» — дальше всё само." }
+    { "t": "Install", "d": "Download the APK and open it on your phone." },
+    { "t": "Set up", "d": "Pick a theme, a size and a place on the screen." },
+    { "t": "Apply", "d": "Tap “Set wallpaper” and the rest happens on its own." }
   ],
-  "download": "Скачать APK",
-  "desktop": "Для компьютера"
+  "download": "Download APK",
+  "desktop": "For desktop"
 }
