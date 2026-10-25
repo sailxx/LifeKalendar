@@ -34,7 +34,7 @@ ${k.dots(x + 36, y + 38, f.dots)}
 ${k.text(x + 32, y + 98, f.t, { size: 21, weight: 650, ls: -0.4 })}
 ${d.s}`;
   }).join('\n');
-  return k.svg(W, 2 * ch + gap, 'Возможности', body());
+  return k.svg(W, 2 * ch + gap, 'Features', body());
 }
 
 function themes() {
@@ -46,7 +46,7 @@ function themes() {
 ${list.map((t, i) => `${k.phone(xs[i], 36, pw, t)}
 ${k.text(xs[i] + pw / 2, 36 + pw * 2.08 + 38, S.themes[i], { size: 11, weight: 600, m: true, ls: 2.2, fill: P.muted, anchor: 'middle' })}`).join('\n')}`;
   };
-  return k.svg(W, h, 'Темы', body());
+  return k.svg(W, h, 'Themes', body());
 }
 
 function steps() {
@@ -62,7 +62,7 @@ ${k.text(x + 28, y0 + 90, st.t, { size: 21, weight: 650, ls: -0.4 })}
 ${d.s}`;
   }).join('\n');
   const y0 = 0;
-  return k.svg(W, ch, 'Как поставить', body());
+  return k.svg(W, ch, 'How to install', body());
 }
 
 function button() {
