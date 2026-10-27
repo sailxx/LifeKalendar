@@ -142,7 +142,12 @@ object Wallpaper {
         c.drawColor(pal.bg)
 
         // Сетка 3×4 месяца, в каждом точки по 7 в ряд (до 5 рядов).
-        val gridW = w * listOf(0.58f, 0.68f, 0.80f)[s.size.coerceIn(0, 2)]
+        var gridW = w * listOf(0.58f, 0.68f, 0.80f)[s.size.coerceIn(0, 2)]
+        // Планшет или складной экран почти квадратный: сетка по ширине не влезла бы по высоте, ужимаем её.
+        // Высота сетки растёт прямо пропорционально ширине, поэтому достаточно одного пересчёта.
+        val maxH = h * listOf(0.50f, 0.80f, 0.70f)[s.place.coerceIn(0, 2)]
+        val fullH = gridW * 0.86f / 21 * (4 * 6.5f + 3 * 1.1f + 2.6f) // шаг точки = gridW·0.86/21
+        if (fullH > maxH) gridW *= maxH / fullH
         val colGap = gridW * 0.07f
         val monthW = (gridW - 2 * colGap) / 3
         val pitch = monthW / 7

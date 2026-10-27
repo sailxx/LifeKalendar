@@ -112,7 +112,17 @@
       <pre id="off"></pre>
       <button class="copy" data-copy="off">Скопировать</button>
     </details>
-    <p class="note">macOS и Linux: скачай PNG и поставь его обоями. Для телефона — <a href="https://github.com/sailxx/LifeKalendar">приложение для Android</a>.</p>
+  </section>
+
+  <section>
+    <h2>macOS и Linux: скрипт</h2>
+    <p class="lead">Рисует обои под разрешение главного монитора и обновляет их сам: при входе и каждые 10 минут проверяет дату и тему системы. macOS (launchd), GNOME, KDE, XFCE, Cinnamon, MATE, Sway. Нужен Python 3; Pillow скрипт поставит себе сам. Вставь команду в терминал:</p>
+    <pre id="cmdx"></pre>
+    <button class="copy" data-copy="cmdx">Скопировать</button>
+    <p class="note">Выключить:</p>
+    <pre id="offx"></pre>
+    <button class="copy" data-copy="offx">Скопировать</button>
+    <p class="note">Или скачай PNG и поставь его обоями вручную. Для телефона — <a href="https://github.com/sailxx/LifeKalendar">приложение для Android</a>.</p>
   </section>
 </main>
 <script>
@@ -212,6 +222,10 @@ function draw() {
   $('cmd').textContent = `$d="$env:LOCALAPPDATA\\LifeKalendar"; ni $d -ItemType Directory -Force >$null; ` +
     `irm ${location.origin}${location.pathname.replace(/[^/]*$/, '')}kalendar.ps1 -OutFile "$d\\kalendar.ps1"; ` +
     `powershell -NoProfile -ExecutionPolicy Bypass -File "$d\\kalendar.ps1" -Install ${args}`;
+  const base = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
+  $('cmdx').textContent = `curl -fsSL ${base}kalendar.py -o /tmp/kalendar.py && python3 /tmp/kalendar.py --install ` +
+    `--theme ${st.theme} --size ${st.size} --place ${st.place} --lang ${st.lang}`;
+  $('offx').textContent = 'python3 "$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support/LifeKalendar" || echo "${XDG_DATA_HOME:-$HOME/.local/share}/lifekalendar")/kalendar.py" --uninstall';
   $('off').textContent = `powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\\LifeKalendar\\kalendar.ps1" -Uninstall`;
 }
 
