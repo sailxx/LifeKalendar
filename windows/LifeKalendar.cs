@@ -8,16 +8,18 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
 using System.IO;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Календарь-обои")]
 [assembly: AssemblyProduct("LifeKalendar")]
-[assembly: AssemblyVersion("1.4.1.0")]
+[assembly: AssemblyVersion("1.7.0.0")]
 
 // Настройки: те же поля, что в Settings на Android, плюс мониторы. Хранятся в settings.ini.
 class Settings
@@ -738,6 +740,61 @@ class Preview : Control
     }
 }
 
+// Проверка и установка новой версии с GitHub Releases.
+static class Updater
+{
+    const string Repo = "sailxx/LifeKalendar";
+
+    public static Version Current { get { return Assembly.GetExecutingAssembly().GetName().Version; } }
+
+    // Версия в виде «1.7» (нулевые хвосты убираем).
+    public static string Show(Version v) { return v.Revision > 0 ? v.ToString() : v.Build > 0 ? v.ToString(3) : v.ToString(2); }
+
+    // Последняя версия на GitHub или null, если проверить не вышло.
+    public static Version Latest()
+    {
+        try
+        {
+            ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+            // Страница /releases/latest перенаправляет на /releases/tag/vX.Y: читаем версию из адреса, без лимитов API.
+            var req = (HttpWebRequest)WebRequest.Create("https://github.com/" + Repo + "/releases/latest");
+            req.UserAgent = "LifeKalendar";
+            req.Method = "HEAD";
+            req.AllowAutoRedirect = false;
+            req.Timeout = 10000;
+            using (var r = (HttpWebResponse)req.GetResponse())
+            {
+                var m = Regex.Match(r.Headers["Location"] ?? "", "/tag/v?([0-9.]+)$");
+                Version v;
+                return m.Success && Version.TryParse(m.Groups[1].Value, out v) ? v : null;
+            }
+        }
+        catch { return null; }
+    }
+
+    // Скачивает новый exe рядом, подменяет работающий (его можно переименовать) и возвращает путь для перезапуска.
+    public static string Download()
+    {
+        ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+        string exe = Application.ExecutablePath, neu = exe + ".new", old = exe + ".old";
+        using (var wc = new WebClient())
+        {
+            wc.Headers[HttpRequestHeader.UserAgent] = "LifeKalendar";
+            wc.DownloadFile("https://github.com/" + Repo + "/releases/latest/download/LifeKalendar.exe", neu);
+        }
+        if (new FileInfo(neu).Length < 100000) { File.Delete(neu); throw new IOException("Скачался неполный файл"); }
+        if (File.Exists(old)) File.Delete(old);
+        File.Move(exe, old);
+        File.Move(neu, exe);
+        return exe;
+    }
+
+    public static void CleanUp()
+    {
+        try { File.Delete(Application.ExecutablePath + ".old"); } catch { }
+    }
+}
+
 class MainForm : Form
 {
     readonly Settings s = Settings.Load();
@@ -751,6 +808,9 @@ class MainForm : Form
     readonly NotifyIcon tray = new NotifyIcon();
     readonly TrayMenu menu = new TrayMenu();
     bool hidden, exiting, hinted;
+    readonly Label version = new Label();
+    readonly Btn update;
+    DateTime checkedAt;
     string lastError;
     int busy;
 
@@ -777,6 +837,15 @@ class MainForm : Form
 
         Add(new Label { Text = "Календарь-обои", Font = new Font("Segoe UI Semibold", 20f), AutoSize = true, Location = new Point(P(28), P(22)) });
         Add(new Label { Text = "Год точками на рабочем столе. Обновляется сам каждый день,\nтему можно менять вместе с Windows или по расписанию.", ForeColor = Ui.Dim, AutoSize = true, Location = new Point(P(30), P(66)) });
+        version.Text = "v" + Updater.Show(Updater.Current);
+        version.ForeColor = Ui.Dim;
+        version.AutoSize = true;
+        version.Location = new Point(P(292), P(36));
+        Add(version);
+        update = new Btn("", true) { Visible = false, Font = new Font("Segoe UI Semibold", 9.5f) };
+        update.SetBounds(P(378), P(26), P(210), P(34));
+        update.Clicked += InstallUpdate;
+        Add(update);
         preview.SetBounds(P(28), P(120), P(560), P(340));
         Add(preview);
 
@@ -838,6 +907,55 @@ class MainForm : Form
 
         Refresh_();
         if (s.Enabled == 1) Run(delegate { Kalendar.Apply(s, false); }, null);
+        Updater.CleanUp();
+        CheckUpdate();
+    }
+
+    // Раз в 6 часов и при открытии окна смотрим, нет ли новой версии; кнопка появляется, только если есть.
+    void CheckUpdate()
+    {
+        if (DateTime.Now - checkedAt < TimeSpan.FromHours(6)) return;
+        checkedAt = DateTime.Now;
+        ThreadPool.QueueUserWorkItem(delegate
+        {
+            var v = Updater.Latest();
+            if (v == null || v <= Updater.Current) return;
+            BeginInvoke((Action)delegate
+            {
+                update.Text = "Обновить до v" + Updater.Show(v);
+                update.Visible = true;
+            });
+        });
+    }
+
+    void InstallUpdate()
+    {
+        update.Enabled = false;
+        update.Text = "Скачиваю...";
+        update.Invalidate();
+        ThreadPool.QueueUserWorkItem(delegate
+        {
+            try
+            {
+                string exe = Updater.Download();
+                BeginInvoke((Action)delegate
+                {
+                    // Старая копия закрывается, новая запускается через пару секунд: иначе она примет себя за вторую.
+                    Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 3 127.0.0.1 >nul & start \"\" \"" + exe + "\"") { CreateNoWindow = true, UseShellExecute = false });
+                    Exit();
+                });
+            }
+            catch (Exception e)
+            {
+                Kalendar.Log(e.ToString());
+                BeginInvoke((Action)delegate
+                {
+                    update.Enabled = true;
+                    update.Text = "Не вышло, ещё раз";
+                    update.Invalidate();
+                });
+            }
+        });
     }
 
     // Первый показ при запуске из автозагрузки пропускаем: окно создаётся, но остаётся скрытым.
@@ -859,6 +977,7 @@ class MainForm : Form
         Relayout();
         Refresh_();
         Activate();
+        CheckUpdate();
     }
 
     // Крестик прячет окно в трей; закрыть совсем — «Выход» в меню значка.
