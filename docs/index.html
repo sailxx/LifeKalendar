@@ -94,7 +94,7 @@
       <div class="cap">Подписи</div>
       <div class="row" data-k="lang"><button class="chip">Русские</button><button class="chip">English</button></div>
       <button class="btn" id="save">Скачать PNG</button>
-      <div class="note">«Авто» — тёмная или светлая по теме системы. Картинка — на сегодня; чтобы обои обновлялись сами, ниже скрипт для Windows.</div>
+      <div class="note">«Авто» — тёмная или светлая по теме системы. Картинка — на сегодня; чтобы обои обновлялись сами, ниже программа для Windows и скрипт для macOS и Linux.</div>
     </div>
   </div>
 
@@ -112,11 +112,21 @@
       <pre id="off"></pre>
       <button class="copy" data-copy="off">Скопировать</button>
     </details>
-    <p class="note">macOS и Linux: скачай PNG и поставь его обоями. Для телефона — <a href="https://github.com/sailxx/LifeKalendar">приложение для Android</a>.</p>
+  </section>
+
+  <section>
+    <h2>macOS и Linux: скрипт</h2>
+    <p class="lead">Обои на рабочий стол, обновляются сами раз в день. Нужен Python 3 с модулем venv и интернет для установки Pillow. macOS: launchd, при первом запуске разреши доступ к System Events. Linux: GNOME, KDE, Cinnamon, MATE, XFCE или feh; обновление через systemd или cron. Вставь команду в терминал:</p>
+    <pre id="ucmd"></pre>
+    <button class="copy" data-copy="ucmd">Скопировать</button>
+    <p class="note">Выключить:</p>
+    <pre id="uoff"></pre>
+    <button class="copy" data-copy="uoff">Скопировать</button>
+    <p class="note">Для телефона есть <a href="https://github.com/sailxx/LifeKalendar">приложение для Android</a>.</p>
   </section>
 </main>
 <script>
-// Расчёт совпадает с kalendar.ps1 и приложением для Android (Calendar.kt).
+// Расчёт совпадает с kalendar.ps1, kalendar.py и приложением для Android (Calendar.kt).
 const PAL = [
   ['#1C1C1E', '#F2F2F2', '#FF5A1F', 'rgba(255,255,255,.22)', 'rgba(255,255,255,.6)'],
   ['#F2380F', '#FFD36B', '#FFFFFF', 'rgba(0,0,0,.25)', 'rgba(255,231,176,.7)'],
@@ -212,6 +222,10 @@ function draw() {
   $('cmd').textContent = `$d="$env:LOCALAPPDATA\\LifeKalendar"; ni $d -ItemType Directory -Force >$null; ` +
     `irm ${location.origin}${location.pathname.replace(/[^/]*$/, '')}kalendar.ps1 -OutFile "$d\\kalendar.ps1"; ` +
     `powershell -NoProfile -ExecutionPolicy Bypass -File "$d\\kalendar.ps1" -Install ${args}`;
+  const base = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
+  $('ucmd').textContent = `curl -fsSL ${base}kalendar.py -o /tmp/kalendar.py && python3 /tmp/kalendar.py --install ` +
+    `--theme ${st.theme} --size ${st.size} --place ${st.place} --lang ${st.lang}`;
+  $('uoff').textContent = 'python3 "$(case "$(uname)" in Darwin) echo "$HOME/Library/Application Support";; *) echo "${XDG_DATA_HOME:-$HOME/.local/share}";; esac)/LifeKalendar/kalendar.py" --uninstall';
   $('off').textContent = `powershell -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\\LifeKalendar\\kalendar.ps1" -Uninstall`;
 }
 
