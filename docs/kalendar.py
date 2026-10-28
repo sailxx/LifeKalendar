@@ -190,9 +190,13 @@ def render(w, h, theme, size, place, lang, date=None):
 def set_wallpaper(path):
     if MAC:
         script = 'tell application "System Events" to tell every desktop to set picture to POSIX file "%s"' % path
-        run("osascript", "-e", script)
+        if run("osascript", "-e", script)[0] != 0:
+            print("Не удалось сменить обои: разреши доступ к System Events в «Системные настройки → Конфиденциальность → Автоматизация».",
+                  file=sys.stderr)
         return
     uri = "file://" + path
+    # Из cron адрес сессионной шины не задан, без него gsettings молчит.
+    os.environ.setdefault("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/%d/bus" % os.getuid())
     desk = (os.environ.get("XDG_CURRENT_DESKTOP", "") + os.environ.get("DESKTOP_SESSION", "")).lower()
     if "kde" in desk or "plasma" in desk:
         run("plasma-apply-wallpaperimage", path)
@@ -200,6 +204,7 @@ def set_wallpaper(path):
         code, out = run("xfconf-query", "-c", "xfce4-desktop", "-l")
         for prop in [l for l in out.splitlines() if l.endswith("/last-image")]:
             run("xfconf-query", "-c", "xfce4-desktop", "-p", prop, "-s", path)
+            run("xfconf-query", "-c", "xfce4-desktop", "-p", prop.replace("last-image", "image-style"), "-s", "5")
     elif "mate" in desk:
         run("gsettings", "set", "org.mate.background", "picture-filename", path)
     elif "cinnamon" in desk:
